@@ -2,6 +2,7 @@ import tkinter as tk
 import serial
 import threading
 import time
+from datetime import datetime
 
 PUERTO_COM = 'COM7'
 BAUDIOS = 115200
@@ -11,7 +12,7 @@ class MonitorAguaPro:
     def __init__(self, root):
         self.root = root
         self.root.title("Monitor de Calidad del Agua - ESP32")
-        self.root.geometry("800x700")
+        self.root.geometry("800x930")
         self.root.configure(bg="#050d18")
 
         # Variables de estado
@@ -21,6 +22,7 @@ class MonitorAguaPro:
         self.mx = 0
         self.sum = 0
         self.count = 0
+        self.conteo = {"BUENA": 0, "REGULAR": 0, "ALTO": 0, "PELIGRO": 0}
         self.ser = None
         self.leyendo = True
 
@@ -100,7 +102,26 @@ class MonitorAguaPro:
                  font=("Segoe UI", 10, "bold")).pack(pady=5)
         self.lbl_stats = tk.Label(self.card_stats, text="Mín: 0 | Máx: 0 | Prom: 0", bg=self.card_color, fg="#00aaee",
                                   font=("Courier New", 18, "bold"))
-        self.lbl_stats.pack(pady=20)
+        self.lbl_stats.pack(pady=(10, 5))
+        self.lbl_conteo = tk.Label(self.card_stats, text="", bg=self.card_color, fg=self.text_color,
+                                   font=("Courier New", 11, "bold"))
+        self.lbl_conteo.pack(pady=(0, 10))
+
+        # Fila 4: Resultados obtenidos (lecturas con su clasificación)
+        f4 = tk.Frame(self.root, bg=self.card_color, bd=1, relief="solid")
+        f4.pack(fill="both", expand=True, padx=20, pady=(0, 10))
+        tk.Label(f4, text="RESULTADOS OBTENIDOS", bg=self.card_color, fg=self.lbl_color,
+                 font=("Segoe UI", 10, "bold")).pack(anchor="w", padx=10, pady=5)
+        marco = tk.Frame(f4, bg=self.card_color)
+        marco.pack(fill="both", expand=True, padx=10, pady=(0, 10))
+        scroll = tk.Scrollbar(marco)
+        scroll.pack(side="right", fill="y")
+        self.txt_resultados = tk.Text(marco, height=8, bg="#070f1a", fg=self.text_color, bd=0,
+                                      font=("Courier New", 11), yscrollcommand=scroll.set, state="disabled")
+        self.txt_resultados.pack(side="left", fill="both", expand=True)
+        scroll.config(command=self.txt_resultados.yview)
+        for nombre, c in (("BUENA", "#00e87a"), ("REGULAR", "#ffc107"), ("ALTO", "#ff8c1a"), ("PELIGRO", "#ff4455")):
+            self.txt_resultados.tag_config(nombre, foreground=c)
 
     def obtener_calidad(self, val):
         """Devuelve (texto, color, mensaje de alerta) según el ppm."""
@@ -144,6 +165,16 @@ class MonitorAguaPro:
         self.sum += val
         self.count += 1
 
+        # Registrar el resultado en la lista (más reciente arriba)
+        txt, _, _ = self.obtener_calidad(val)
+        self.conteo[txt] += 1
+        linea = f"{datetime.now():%H:%M:%S} | {val:7.1f} ppm | {txt}\n"
+        self.txt_resultados.config(state="normal")
+        self.txt_resultados.insert("1.0", linea, txt)
+        if int(self.txt_resultados.index("end-1c").split(".")[0]) > 200:
+            self.txt_resultados.delete("200.0", "end")
+        self.txt_resultados.config(state="disabled")
+
     def actualizar_ui(self):
         txt, color, alerta = self.obtener_calidad(self.tds)
 
@@ -184,6 +215,9 @@ class MonitorAguaPro:
         prom = self.sum / self.count if self.count > 0 else 0
         m_val = self.mn if self.count > 0 else 0
         self.lbl_stats.config(text=f"Mín: {int(m_val)} | Máx: {int(self.mx)} | Prom: {int(prom)}")
+        c = self.conteo
+        self.lbl_conteo.config(text=f"Lecturas: {self.count}  |  BUENA: {c['BUENA']}  REGULAR: {c['REGULAR']}  "
+                                    f"ALTO: {c['ALTO']}  PELIGRO: {c['PELIGRO']}")
 
         self.root.after(100, self.actualizar_ui)
 
