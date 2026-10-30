@@ -3,22 +3,18 @@ import serial
 import threading
 import time
 from datetime import datetime
-
 PUERTO_COM = 'COM10'
 BAUDIOS = 115200
-
 # ---- Mismos parámetros que el Arduino ----
 VARIACION_MINIMA = 15.0      # ppm de diferencia para contar como "salto"
 CICLOS_SALTANDO = 5          # 5 saltos seguidos → activa DESCONECTADO
 CICLOS_ESTABLES = 3          # 3 lecturas estables seguidas → desactiva
-
-
 class MonitorAguaPro:
     def __init__(self, root):
         self.root = root
         self.root.title("Monitor de Calidad del Agua - ESP32")
         self.root.geometry("800x930")
-        self.root.configure(bg="#050d18")
+        self.root.configure(bg="#020804")  # Fondo general negro muy oscuro
 
         # Variables de estado
         self.tds = 0
@@ -31,18 +27,16 @@ class MonitorAguaPro:
                        "SIN AGUA": 0, "DESCONECTADO": 0}
         self.ser = None
         self.leyendo = True
-
         # ---- Estado de desconexión con histéresis (igual que Arduino) ----
         self.lectura_previa = -1.0
         self.contador_saltos = 0
         self.contador_estables = 0
         self.estado_desconectado = False
-
-        # Estilos compartidos
-        self.bg_color = "#050d18"
-        self.card_color = "#0a1522"
-        self.lbl_color = "#344f68"
-        self.text_color = "#c0d8f0"
+        # Estilos compartidos (Verde esmeralda y negro)
+        self.bg_color = "#020804"
+        self.card_color = "#06130a"
+        self.lbl_color = "#134d28"
+        self.text_color = "#a2d9b1"
 
         self.crear_interfaz()
 
@@ -54,9 +48,9 @@ class MonitorAguaPro:
         header = tk.Frame(self.root, bg=self.bg_color)
         header.pack(fill="x", padx=20, pady=10)
         tk.Label(header, text="SISTEMA DE MONITOREO — ESP32\n💧 Monitor de Calidad del Agua",
-                 font=("Segoe UI", 16, "bold"), bg=self.bg_color, fg="#deeeff", justify="left").pack(side="left")
+                 font=("Segoe UI", 16, "bold"), bg=self.bg_color, fg="#52ff99", justify="left").pack(side="left")
 
-        self.btn_conectar = tk.Button(header, text="🔌 Conectar ESP32", bg="#0077cc", fg="white",
+        self.btn_conectar = tk.Button(header, text="🔌 Conectar ESP32", bg="#008f4c", fg="white",
                                       command=self.conectar_serial, font=("Segoe UI", 10, "bold"), relief="flat")
         self.btn_conectar.pack(side="right", padx=10)
 
@@ -79,12 +73,12 @@ class MonitorAguaPro:
                  font=("Segoe UI", 10, "bold")).pack(pady=5)
 
         # LCD Simulado
-        self.lcd_frame = tk.Frame(self.card_estado, bg="#0b1e0f", bd=2, relief="solid")
+        self.lcd_frame = tk.Frame(self.card_estado, bg="#031408", bd=2, relief="solid")
         self.lcd_frame.pack(fill="x", padx=20, pady=5)
-        self.lbl_lcd1 = tk.Label(self.lcd_frame, text="TDS: 0000 ppm", bg="#0b1e0f", fg="#33ff88",
+        self.lbl_lcd1 = tk.Label(self.lcd_frame, text="TDS: 0000 ppm", bg="#031408", fg="#22ff77",
                                  font=("Courier New", 14, "bold"))
         self.lbl_lcd1.pack(anchor="w", padx=10)
-        self.lbl_lcd2 = tk.Label(self.lcd_frame, text="Calidad: BUENA", bg="#0b1e0f", fg="#33ff88",
+        self.lbl_lcd2 = tk.Label(self.lcd_frame, text="Calidad: BUENA", bg="#031408", fg="#22ff77",
                                  font=("Courier New", 14, "bold"))
         self.lbl_lcd2.pack(anchor="w", padx=10)
 
@@ -112,7 +106,7 @@ class MonitorAguaPro:
         self.card_stats.pack(fill="both", expand=True)
         tk.Label(self.card_stats, text="ESTADÍSTICAS", bg=self.card_color, fg=self.lbl_color,
                  font=("Segoe UI", 10, "bold")).pack(pady=5)
-        self.lbl_stats = tk.Label(self.card_stats, text="Mín: 0 | Máx: 0 | Prom: 0", bg=self.card_color, fg="#00aaee",
+        self.lbl_stats = tk.Label(self.card_stats, text="Mín: 0 | Máx: 0 | Prom: 0", bg=self.card_color, fg="#00e87a",
                                   font=("Courier New", 18, "bold"))
         self.lbl_stats.pack(pady=(10, 5))
         self.lbl_conteo = tk.Label(self.card_stats, text="", bg=self.card_color, fg=self.text_color,
@@ -128,10 +122,11 @@ class MonitorAguaPro:
         marco.pack(fill="both", expand=True, padx=10, pady=(0, 10))
         scroll = tk.Scrollbar(marco)
         scroll.pack(side="right", fill="y")
-        self.txt_resultados = tk.Text(marco, height=8, bg="#070f1a", fg=self.text_color, bd=0,
+        self.txt_resultados = tk.Text(marco, height=8, bg="#040d07", fg=self.text_color, bd=0,
                                       font=("Courier New", 11), yscrollcommand=scroll.set, state="disabled")
         self.txt_resultados.pack(side="left", fill="both", expand=True)
         scroll.config(command=self.txt_resultados.yview)
+        # Mantenemos los colores originales solicitados para los distintos estados
         for nombre, c in (
             ("BUENA", "#00e87a"),
             ("REGULAR", "#ffc107"),
@@ -141,11 +136,10 @@ class MonitorAguaPro:
             ("DESCONECTADO", "#888888"),
         ):
             self.txt_resultados.tag_config(nombre, foreground=c)
-
     def obtener_calidad(self, val):
         """Devuelve (texto, color, mensaje de alerta) según el ppm.
-           - val = -1  -> sensor desconectado
-           - val < 20  -> sin agua
+        - val = -1  -> sensor desconectado
+        - val < 20  -> sin agua
         """
         if val == -1:
             return "DESCONECTADO", "#888888", "🔌 Sensor desconectado: revise la conexión"
@@ -158,21 +152,14 @@ class MonitorAguaPro:
         if val < 750:
             return "ALTO", "#ff8c1a", "⚠ TDS alto: no recomendada para consumo"
         return "PELIGRO", "#ff4455", "⛔ PELIGRO: TDS crítico, no usar el agua"
-
     def detectar_desconexion(self, val):
-        """Réplica exacta de sensorDesconectado() del Arduino.
-        Devuelve True si el sensor está desconectado (con histéresis).
-        """
         if self.lectura_previa < 0:
             self.lectura_previa = val
             return False
-
         variacion = abs(val - self.lectura_previa)
         self.lectura_previa = val
         hay_salto = (variacion > VARIACION_MINIMA)
-
         if not self.estado_desconectado:
-            # MODO NORMAL: detectar cuándo entrar a DESCONECTADO
             if hay_salto:
                 self.contador_saltos += 1
                 if self.contador_saltos >= CICLOS_SALTANDO:
@@ -181,7 +168,6 @@ class MonitorAguaPro:
             else:
                 self.contador_saltos = 0
         else:
-            # MODO DESCONECTADO: detectar cuándo volver a normal
             if hay_salto:
                 self.contador_estables = 0
             else:
@@ -190,9 +176,7 @@ class MonitorAguaPro:
                     self.estado_desconectado = False
                     self.contador_saltos = 0
                     self.contador_estables = 0
-
         return self.estado_desconectado
-
     def conectar_serial(self):
         try:
             if self.ser and self.ser.is_open:
@@ -202,7 +186,6 @@ class MonitorAguaPro:
             threading.Thread(target=self.leer_datos_serial, daemon=True).start()
         except Exception:
             self.btn_conectar.config(text="⚠️ Error COM", bg="#ff4455")
-
     def leer_datos_serial(self):
         while self.leyendo:
             if self.ser and self.ser.is_open:
@@ -214,19 +197,12 @@ class MonitorAguaPro:
                 except Exception:
                     pass
             time.sleep(0.05)
-
     def registrar_lectura(self, val):
-        # Caso especial: sensor desconectado (el ESP32 manda -1)
         if val == -1:
-            # El Arduino ya confirmó la desconexión. Sincronizamos el estado
-            # local para que la histéresis de Python también esté activa.
             self.estado_desconectado = True
             self.contador_saltos = CICLOS_SALTANDO
             self.contador_estables = 0
-            # Reiniciar la lectura previa para que al reconectar no cuente
-            # saltos artificiales.
             self.lectura_previa = -1.0
-
             txt = "DESCONECTADO"
             self.conteo[txt] += 1
             linea = f"{datetime.now():%H:%M:%S} |   ----   | {txt}\n"
@@ -237,14 +213,8 @@ class MonitorAguaPro:
             self.txt_resultados.config(state="disabled")
             self.tds = -1
             return
-
-        # Caso normal: aplicar la histéresis local
         desconectado = self.detectar_desconexion(val)
-
         if desconectado:
-            # El Arduino mandó un ppm, pero localmente detectamos desconexión
-            # (por ejemplo, el estado aún no se había propagado).
-            # Lo tratamos como desconectado.
             txt = "DESCONECTADO"
             self.conteo[txt] += 1
             linea = f"{datetime.now():%H:%M:%S} |   ----   | {txt}\n"
@@ -256,7 +226,6 @@ class MonitorAguaPro:
             self.tds = -1
             return
 
-        # Sensor OK: actualizar datos normalmente
         self.tds = val
         self.historial.append(val)
         if len(self.historial) > 60:
@@ -265,7 +234,6 @@ class MonitorAguaPro:
         self.mx = max(self.mx, val)
         self.sum += val
         self.count += 1
-
         txt, _, _ = self.obtener_calidad(val)
         self.conteo[txt] += 1
         linea = f"{datetime.now():%H:%M:%S} | {val:7.1f} ppm | {txt}\n"
@@ -274,31 +242,27 @@ class MonitorAguaPro:
         if int(self.txt_resultados.index("end-1c").split(".")[0]) > 200:
             self.txt_resultados.delete("200.0", "end")
         self.txt_resultados.config(state="disabled")
-
     def actualizar_ui(self):
         txt, color, alerta = self.obtener_calidad(self.tds)
 
-        # LCD simulado y estado
         if self.tds == -1:
             self.lbl_lcd1.config(text="TDS: ---- ppm")
             self.lbl_lcd2.config(text="Sensor desconec.", fg=color)
         else:
             self.lbl_lcd1.config(text=f"TDS: {int(self.tds):04d} ppm")
             self.lbl_lcd2.config(text=f"Calidad: {txt}", fg=color)
-
         self.lbl_estado_txt.config(text=txt, fg=color)
         self.lbl_alerta.config(text=alerta, fg=color)
-
         # Gauge
         self.canvas_gauge.delete("all")
         cx, cy, r = 110, 120, 80
+        # Arco de fondo en tono esmeralda oscuro
         self.canvas_gauge.create_arc(cx - r, cy - r, cx + r, cy + r, start=-30, extent=240, style="arc",
-                                     outline="#101e30", width=15)
-
+                                     outline="#0a2614", width=15)
         if self.tds == -1:
             self.canvas_gauge.create_text(cx, cy - 10, text="--", fill=color,
                                           font=("Courier New", 32, "bold"))
-            self.canvas_gauge.create_text(cx, cy + 20, text="sin sensor", fill="#3a5268",
+            self.canvas_gauge.create_text(cx, cy + 20, text="sin sensor", fill="#19542f",
                                           font=("Segoe UI", 10))
         else:
             pct = min(self.tds / 1000, 1)
@@ -308,10 +272,9 @@ class MonitorAguaPro:
                                              style="arc", outline=color, width=15)
             self.canvas_gauge.create_text(cx, cy - 10, text=str(int(self.tds)), fill=color,
                                           font=("Courier New", 32, "bold"))
-            self.canvas_gauge.create_text(cx, cy + 20, text="ppm TDS", fill="#3a5268",
+            self.canvas_gauge.create_text(cx, cy + 20, text="ppm TDS", fill="#19542f",
                                           font=("Segoe UI", 10))
-
-        # Gráfico histórico
+        # Gráfico histórico (mantiene sus líneas originales de colores: azul, verde, amarillo, rojo, etc.)
         self.canvas_chart.delete("all")
         w, h = 750, 150
         for limite, c in ((20, "#00c8ff"), (100, "#00e87a"), (350, "#ffc107"), (750, "#ff4455")):
@@ -323,8 +286,8 @@ class MonitorAguaPro:
             for i, val in enumerate(self.historial):
                 y = h - (min(val, 1000) / 1000) * h
                 puntos.extend([i * dx, y])
-            self.canvas_chart.create_line(puntos, fill="#0099ee", width=2)
-
+            # Línea de la gráfica principal en tono verde esmeralda brillante para acoplarse al diseño
+            self.canvas_chart.create_line(puntos, fill="#00ff88", width=2)
         # Estadísticas
         prom = self.sum / self.count if self.count > 0 else 0
         m_val = self.mn if self.count > 0 else 0
@@ -333,16 +296,12 @@ class MonitorAguaPro:
         self.lbl_conteo.config(text=f"Lecturas: {self.count}  |  BUENA: {c['BUENA']}  REGULAR: {c['REGULAR']}  "
                                     f"ALTO: {c['ALTO']}  PELIGRO: {c['PELIGRO']}  "
                                     f"SIN AGUA: {c['SIN AGUA']}  DESCONECTADO: {c['DESCONECTADO']}")
-
         self.root.after(100, self.actualizar_ui)
-
     def al_cerrar(self):
         self.leyendo = False
         if self.ser and self.ser.is_open:
             self.ser.close()
         self.root.destroy()
-
-
 if __name__ == "__main__":
     ventana = tk.Tk()
     app = MonitorAguaPro(ventana)
